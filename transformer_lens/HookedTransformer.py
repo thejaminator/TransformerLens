@@ -1245,12 +1245,13 @@ class HookedTransformer(HookedRootModule):
             b_O_original = state_dict[f"blocks.{layer}.attn.b_O"]
             # 8 bit compat - einsum doesn't support 8bit
             # see https://huggingface.co/blog/hf-bitsandbytes-integration
-            b_V = b_V.to(torch.float16) / 127 if b_V.dtype == torch.int8 else b_V
-            W_O = W_O.to(torch.float16) / 127 if W_O.dtype == torch.int8 else W_O
+            b_V = b_V.to(torch.float16) / 127 if b_V.dtype == torch.int8 else b_V.to(torch.float16)
+            W_O = W_O.to(torch.float16) / 127 if W_O.dtype == torch.int8 else W_O.to(torch.float16)
             summed = einsum(
                 "head_index d_head, head_index d_head d_model -> d_model", b_V, W_O
             )
-            summed_converted = (summed * 127).to(torch.int8) if b_V.dtype == torch.int8 else summed
+            summed_converted = (summed * 127).to(torch.int8) if b_V.dtype == torch.int8 else summed.to(
+                b_O_original.dtype)
             folded_b_O = b_O_original + summed_converted
 
             state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O
