@@ -1244,18 +1244,19 @@ class HookedTransformer(HookedRootModule):
             # [d_model]
             b_O_original = state_dict[f"blocks.{layer}.attn.b_O"]
             # 8 bit compat - einsum doesn't support 8bit
-            b_V = b_V.to(torch.float16) if b_V.dtype == torch.int8 else b_V
-            W_O = W_O.to(torch.float16) if W_O.dtype == torch.int8 else W_O
+            b_V = b_V.to(torch.float16) if b_V.dtype != torch.float16 else b_V
+            W_O = W_O.to(torch.float16) if W_O.dtype != torch.float16 else W_O
             b_O_original = (
                 b_O_original.to(torch.float16)
-                if b_O_original.dtype == torch.int8
+                if b_O_original.dtype != torch.float16
                 else b_O_original
             )
 
             folded_b_O = b_O_original + einsum(
                 "head_index d_head, head_index d_head d_model -> d_model", b_V, W_O
             )
-            folded_b_O = folded_b_O.to(torch.int8) if b_V.dtype == torch.int8 else folded_b_O
+            folded_b_O = folded_b_O.to(torch.int8) if b_V.dtype == torch.int8 else folded_b_O.to(
+                torch.float32) if b_V.dtype == torch.float32 else folded_b_O
 
             state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O
             state_dict[f"blocks.{layer}.attn.b_V"] = torch.zeros_like(b_V)
