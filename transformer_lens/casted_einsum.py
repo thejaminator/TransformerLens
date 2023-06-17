@@ -2,7 +2,7 @@ from fancy_einsum import einsum
 from torch import Tensor
 
 
-def einsum_cast(equation: str, *operands: Tensor) -> Tensor:
+def fixed_einsum_cast(equation: str, *operands: Tensor) -> Tensor:
     """Evaluates the Einstein summation convention on the operands.
     casts the operands to the same type before calling einsum
 

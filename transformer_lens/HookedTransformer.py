@@ -17,6 +17,7 @@ import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
 from transformer_lens import HookedTransformerConfig
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.casted_einsum import fixed_einsum_cast
 from transformer_lens.components import (
     Embed,
     LayerNorm,
@@ -1252,7 +1253,7 @@ class HookedTransformer(HookedRootModule):
                 else b_O_original
             )
 
-            folded_b_O = b_O_original + einsum(
+            folded_b_O = b_O_original + fixed_einsum_cast(
                 "head_index d_head, head_index d_head d_model -> d_model", b_V, W_O
             )
             folded_b_O = folded_b_O.to(torch.int8) if b_V.dtype == torch.int8 else folded_b_O.to(
@@ -1333,7 +1334,7 @@ class HookedTransformer(HookedRootModule):
             # Factors the bias to be consistent.
             b_V = state_dict[f"blocks.{l}.attn.b_V"]
             b_O = state_dict[f"blocks.{l}.attn.b_O"]
-            effective_bias = b_O + einsum(
+            effective_bias = b_O + fixed_einsum_cast(
                 "head_index d_head, head_index d_head d_model -> d_model", b_V, W_O
             )
             state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros_like(b_V)

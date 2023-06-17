@@ -12,7 +12,7 @@ from jaxtyping import Float, Int
 from typeguard import typeguard_ignore
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
-from transformer_lens.casted_einsum import einsum_cast
+from transformer_lens.casted_einsum import fixed_einsum_cast
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
@@ -56,7 +56,7 @@ class Unembed(nn.Module):
         self, residual: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_vocab_out"]:
         return (
-            einsum(
+            fixed_einsum_cast(
                 "batch pos d_model, d_model vocab -> batch pos vocab",
                 residual,
                 self.W_U,
@@ -170,7 +170,7 @@ class BertMLMHead(nn.Module):
 
     def forward(self, resid: Float[torch.Tensor, "batch pos d_model"]) -> torch.Tensor:
         resid = (
-            einsum(
+            fixed_einsum_cast(
                 "batch pos d_model_in, d_model_out d_model_in -> batch pos d_model_out",
                 resid,
                 self.W,
@@ -474,7 +474,7 @@ class Attention(nn.Module):
             qkv_einops_string = "batch pos d_model"
 
         q = self.hook_q(
-            einsum(
+            fixed_einsum_cast(
                 f"{qkv_einops_string}, head_index d_model d_head \
                 -> batch pos head_index d_head",
                 query_input,
@@ -483,7 +483,7 @@ class Attention(nn.Module):
             + self.b_Q
         )  # [batch, pos, head_index, d_head]
         k = self.hook_k(
-            einsum(
+            fixed_einsum_cast(
                 f"{qkv_einops_string}, head_index d_model d_head \
                 -> batch pos head_index d_head",
                 key_input,
@@ -492,7 +492,7 @@ class Attention(nn.Module):
             + self.b_K
         )  # [batch, pos, head_index, d_head]
         v = self.hook_v(
-            einsum(
+            fixed_einsum_cast(
                 f"{qkv_einops_string}, head_index d_model d_head \
                 -> batch pos head_index d_head",
                 value_input,
@@ -513,14 +513,14 @@ class Attention(nn.Module):
             q, k = self.rotary_rotate_qk(q, k, kv_cache_pos_offset)
 
         attn_scores = (
-            einsum_cast(
+                fixed_einsum_cast(
                 "batch query_pos head_index d_head, \
                     batch key_pos head_index d_head \
                     -> batch head_index query_pos key_pos",
                 q,
                 k,
             )
-            / self.attn_scale
+                / self.attn_scale
         )  # [batch, head_index, query_pos, key_pos]
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
@@ -535,7 +535,7 @@ class Attention(nn.Module):
             F.softmax(attn_scores, dim=-1)
         )  # [batch, head_index, query_pos, key_pos]
         z = self.hook_z(
-            einsum(
+            fixed_einsum_cast(
                 "batch key_pos head_index d_head, \
                 batch head_index query_pos key_pos -> \
                 batch query_pos head_index d_head",
@@ -546,7 +546,7 @@ class Attention(nn.Module):
         if not self.cfg.use_attn_result:
             out = (
                 (
-                    einsum(
+                    fixed_einsum_cast(
                         "batch pos head_index d_head, \
                             head_index d_head d_model -> \
                             batch pos d_model",
@@ -560,7 +560,7 @@ class Attention(nn.Module):
             # Explicitly calculate the attention result so it can be accessed by a hook
             # This is off by default because it can easily eat through your GPU memory.
             result = self.hook_result(
-                einsum(
+                fixed_einsum_cast(
                     "batch pos head_index d_head, \
                         head_index d_head d_model -> \
                         batch pos head_index d_model",
@@ -726,7 +726,7 @@ class MLP(nn.Module):
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
-            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
+            fixed_einsum_cast("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
             + self.b_in
         )  # [batch, pos, d_mlp]
         if not self.cfg.act_fn.endswith("_ln"):
@@ -735,7 +735,7 @@ class MLP(nn.Module):
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
         return (
-            einsum(
+            fixed_einsum_cast(
                 "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
                 post_act,
                 self.W_out,
@@ -790,14 +790,14 @@ class GatedMLP(nn.Module):
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
-            einsum(
+            fixed_einsum_cast(
                 "batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_gate
             )
         )  # [batch, pos, d_mlp]
         if not self.cfg.act_fn.endswith("_ln"):
             post_act = self.hook_post(
                 self.act_fn(pre_act)
-                * einsum(
+                * fixed_einsum_cast(
                     "batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in
                 )
                 + self.b_in
@@ -806,7 +806,7 @@ class GatedMLP(nn.Module):
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
         return (
-            einsum(
+            fixed_einsum_cast(
                 "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
                 post_act,
                 self.W_out,
