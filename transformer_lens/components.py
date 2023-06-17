@@ -12,7 +12,6 @@ from jaxtyping import Float, Int
 from typeguard import typeguard_ignore
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
-from transformer_lens.casted_einsum import einsum_cast
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
@@ -513,7 +512,7 @@ class Attention(nn.Module):
             q, k = self.rotary_rotate_qk(q, k, kv_cache_pos_offset)
 
         attn_scores = (
-            einsum_cast(
+            einsum(
                 "batch query_pos head_index d_head, \
                     batch key_pos head_index d_head \
                     -> batch head_index query_pos key_pos",
