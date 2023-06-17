@@ -12,7 +12,6 @@ from jaxtyping import Float, Int
 from typing_extensions import Literal
 
 import transformer_lens.utils as utils
-from transformer_lens.casted_einsum import fixed_einsum_cast
 from transformer_lens.utils import Slice, SliceInput
 
 
@@ -275,7 +274,7 @@ class ActivationCache:
             has_batch_dim=has_batch_dim,
         )
 
-        logit_attrs = fixed_einsum_cast(
+        logit_attrs = einsum(
             "... d_model, ... d_model -> ...", scaled_residual_stack, logit_directions
         )
 
@@ -364,7 +363,7 @@ class ActivationCache:
             return
         for l in range(self.model.cfg.n_layers):
             # Note that we haven't enabled set item on this object so we need to edit the underlying cache_dict directly.
-            self.cache_dict[f"blocks.{l}.attn.hook_result"] = fixed_einsum_cast(
+            self.cache_dict[f"blocks.{l}.attn.hook_result"] = einsum(
                 "... head_index d_head, head_index d_head d_model -> ... head_index d_model",
                 self[("z", l, "attn")],
                 self.model.blocks[l].attn.W_O,
